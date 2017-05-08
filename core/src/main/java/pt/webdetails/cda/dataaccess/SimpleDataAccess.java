@@ -15,6 +15,7 @@ package pt.webdetails.cda.dataaccess;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import javax.swing.table.TableModel;
@@ -189,9 +190,10 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
     for ( Parameter param : getParameters() ) {
       parameters.add( new Parameter( param ) );
     }
-
-
-    for ( final Parameter parameter : parameters ) {
+    logger.info("*********************************** Custom Param Check - Begin !!!!!!!!!!!!!!!!*************************");
+    Iterator<Parameter> paramItr = parameters.listIterator();
+    while (paramItr.hasNext()) {
+      Parameter parameter = paramItr.next();
       final Parameter parameterPassed = queryOptions.getParameter( parameter.getName() );
       try {
         if ( parameter.getAccess().equals( Parameter.Access.PUBLIC ) && parameterPassed != null ) {
@@ -207,10 +209,27 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
       } catch ( InvalidParameterException e ) {
         throw new QueryException( "Error parsing parameters ", e );
       }
+      if (parameter != null && StringUtils.isNotBlank(parameter.getName())) {
+        if (StringUtils.indexOfAny(parameter.getName().toUpperCase(), new String[]{"REPLACEQRY", "APPENDQRY", "SUBSTITUTEQRY"}) != -1
+                && StringUtils.isNotBlank(parameter.getStringValue())) {
+          String paramValue = parameter.getStringValue();
+          String paramName = parameter.getName();
+          logger.info("Custom Query Found ::: " + parameter.getName());
+          if (StringUtils.indexOfAny(paramValue.toUpperCase(), new String[]{"DELETE ", "TRUNCATE ", "UPDATE ", "DROP ", "CREATE ", "ALTER ", "INSERT "}) != -1) {
+            throw new QueryException( "Error parsing customer query : ", new Exception("Encoutered a statement other than SELECT..."));
+          } else if (StringUtils.equalsIgnoreCase(paramName, "REPLACEQRY")) {
+            this.query = paramValue;
+          } else if (StringUtils.equalsIgnoreCase(paramName, "APPENDQRY")) {
+            this.query = this.query + " " + paramValue;
+          } else if (StringUtils.equalsIgnoreCase(paramName, "SUBSTITUTEQRY")) {
+            this.query = StringUtils.replace(this.query, "~substituteQry~", paramValue);
+          }
+        }
+      }
     }
+    logger.info("*********************************** Custom Param Check - End !!!!!!!!!!!!!!!!*************************");
     return parameters;
   }
-
 
   private TableCacheKey createCacheKey( final List<Parameter> parameters ) throws QueryException {
     try {
