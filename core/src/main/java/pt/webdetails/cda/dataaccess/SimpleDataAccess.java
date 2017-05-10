@@ -51,6 +51,7 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
   private static final Log logger = LogFactory.getLog( SimpleDataAccess.class );
   protected String connectionId;
   protected String query;
+  protected String orgQuery;
   protected String queryType;
   private IEventPublisher eventPublisher;
 
@@ -69,6 +70,7 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
     this.query = element.selectSingleNode( "./Query" ).getText();
     this.eventPublisher = CdaEngine.getEnvironment().getEventPublisher();
     this.queryType = element.attributeValue( "type" );
+    this.orgQuery = this.query;
   }
 
 
@@ -83,6 +85,7 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
     this.query = query;
     this.connectionId = connectionId;
     this.eventPublisher = CdaEngine.getEnvironment().getEventPublisher();
+    this.orgQuery = query;
   }
 
   /**
@@ -95,6 +98,7 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
   public SimpleDataAccess( String id, String name, String connectionId, String query, String queryType ) {
     super( id, name );
     this.query = query;
+    this.orgQuery = query;
     this.connectionId = connectionId;
     this.eventPublisher = CdaEngine.getEnvironment().getEventPublisher();
     this.queryType = queryType;
@@ -177,7 +181,8 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
         logger.error( "Cache enabled but no cache available." );
       }
     }
-
+    //logger.error("Result Count : " + tableModelCopy.getRowCount());
+    //logger.error("Cols : " + tableModelCopy.getColumnName(0) + " :::: " + tableModelCopy.getValueAt(0, 0));
     // and finally return the copy.
     return tableModelCopy;
   }
@@ -197,7 +202,6 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
       final Parameter parameterPassed = queryOptions.getParameter( parameter.getName() );
       try {
         if ( parameter.getAccess().equals( Parameter.Access.PUBLIC ) && parameterPassed != null ) {
-
           //complete passed parameter and get its value
           parameterPassed.inheritDefaults( parameter );
           parameter.setValue( parameterPassed.getValue() );
@@ -206,26 +210,29 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
           //just force evaluation of default value
           parameter.setValue( parameter.getValue() );
         }
+        //logger.error("Params ::: " + parameter.getName()  + " Value :" + parameter.getValue());
+        if (parameter != null && StringUtils.isNotBlank(parameter.getName())) {
+          //logger.error("Params ::: " + parameter.getName()  + " Value :" + parameter.getValue());
+          if (StringUtils.indexOfAny(parameter.getName().toUpperCase(), new String[]{"REPLACEQRY", "APPENDQRY", "SUBSTITUTEQRY"}) != -1
+                  && StringUtils.isNotBlank(parameter.getStringValue())) {
+            String paramValue = parameter.getStringValue();
+            String paramName = parameter.getName();
+            //logger.error("Custom Query Found ::: " + parameter.getName());
+            if (StringUtils.indexOfAny(paramValue.toUpperCase(), new String[]{"DELETE ", "TRUNCATE ", "UPDATE ", "DROP ", "CREATE ", "ALTER ", "INSERT "}) != -1) {
+              throw new QueryException( "Error parsing customer query : ", new Exception("Encoutered a statement other than SELECT..."));
+            } else if (StringUtils.equalsIgnoreCase(paramName, "REPLACEQRY")) {
+              this.query = paramValue;
+            } else if (StringUtils.equalsIgnoreCase(paramName, "APPENDQRY")) {
+              this.query = this.orgQuery + " " + paramValue;
+            } else if (StringUtils.equalsIgnoreCase(paramName, "SUBSTITUTEQRY")) {
+              this.query = StringUtils.replace(this.orgQuery, "~substituteQry~", paramValue);
+            }
+          }
+        }
       } catch ( InvalidParameterException e ) {
         throw new QueryException( "Error parsing parameters ", e );
       }
-      if (parameter != null && StringUtils.isNotBlank(parameter.getName())) {
-        if (StringUtils.indexOfAny(parameter.getName().toUpperCase(), new String[]{"REPLACEQRY", "APPENDQRY", "SUBSTITUTEQRY"}) != -1
-                && StringUtils.isNotBlank(parameter.getStringValue())) {
-          String paramValue = parameter.getStringValue();
-          String paramName = parameter.getName();
-          logger.info("Custom Query Found ::: " + parameter.getName());
-          if (StringUtils.indexOfAny(paramValue.toUpperCase(), new String[]{"DELETE ", "TRUNCATE ", "UPDATE ", "DROP ", "CREATE ", "ALTER ", "INSERT "}) != -1) {
-            throw new QueryException( "Error parsing customer query : ", new Exception("Encoutered a statement other than SELECT..."));
-          } else if (StringUtils.equalsIgnoreCase(paramName, "REPLACEQRY")) {
-            this.query = paramValue;
-          } else if (StringUtils.equalsIgnoreCase(paramName, "APPENDQRY")) {
-            this.query = this.query + " " + paramValue;
-          } else if (StringUtils.equalsIgnoreCase(paramName, "SUBSTITUTEQRY")) {
-            this.query = StringUtils.replace(this.query, "~substituteQry~", paramValue);
-          }
-        }
-      }
+
     }
     logger.info("*********************************** Custom Param Check - End !!!!!!!!!!!!!!!!*************************");
     return parameters;
@@ -303,7 +310,7 @@ public abstract class SimpleDataAccess extends AbstractDataAccess implements Dom
   protected abstract IDataSourceQuery performRawQuery( ParameterDataRow parameterDataRow ) throws QueryException;
 
 
-  //  public abstract void closeDataSource() throws QueryException;
+  //  pu*---/0b./00lic abstract void closeDataSource() throws QueryException;
   public String getQuery() {
     return query;
   }
